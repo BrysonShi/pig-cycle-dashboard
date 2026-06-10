@@ -1,6 +1,6 @@
 {
   "update_date": "2026-06-10",
-  "update_time": "16:48 CST",
+  "update_time": "17:45 CST",
   "data_source": "codeact_script",
   "breeding_chain": {
     "label": "养殖链",
@@ -161,7 +161,7 @@
         "threshold_high": 65,
         "direction": "falling",
         "data_period": "2026年第20周",
-        "data_source": "Mysteel",
+        "data_source": "钢联数据",
         "confidence": 0.95,
         "extracted": true
       },
@@ -267,18 +267,18 @@
   "action_suggestions": [
     {
       "priority": 1,
-      "action": "加速淘汰低效母猪，降低产能",
-      "rationale": "能繁母猪存栏3904万头仍偏高，去产能加速，需主动缩减规模以应对底部风险。"
+      "action": "加速淘汰低效能母猪，优化种群结构",
+      "rationale": "能繁母猪存栏3904万头仍偏高，去产能加速，需主动淘汰低效母猪以降低后续供给压力。"
     },
     {
       "priority": 2,
-      "action": "减少冻品库存，规避价格下跌风险",
-      "rationale": "冻品库容率28.76%且需求走弱，应加快出库以降低库存损失。"
+      "action": "暂停或减少冻品入库，加快库存出清",
+      "rationale": "冻品库存率28.76%处于高位，需求走弱，应避免新增库存并加速出清以缓解资金压力。"
     },
     {
       "priority": 3,
-      "action": "暂停进口采购，控制资金压力",
-      "rationale": "进口量7万吨处于低位，猪价底部叠加需求疲软，减少进口可缓解现金流压力。"
+      "action": "控制仔猪采购规模，降低补栏风险",
+      "rationale": "仔猪价格23.95元/公斤处于低位，但预警红色显示底部未明，需谨慎补栏以防亏损扩大。"
     }
   ]
 }

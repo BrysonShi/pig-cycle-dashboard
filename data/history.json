@@ -3,11 +3,11 @@
     "date": "2025-12-10",
     "update_time": "16:30",
     "sow_inventory": 4120,
-    "pig_grain_ratio": 6.20,
+    "pig_grain_ratio": 6.2,
     "import_volume": 9.5,
     "sow_feed_sales": null,
     "piglet_price": 32.5,
-    "cull_sow_price": 9.80,
+    "cull_sow_price": 9.8,
     "cold_storage_rate": 33.5
   },
   {
@@ -18,29 +18,29 @@
     "import_volume": 8.8,
     "sow_feed_sales": null,
     "piglet_price": 30.8,
-    "cull_sow_price": 9.20,
+    "cull_sow_price": 9.2,
     "cold_storage_rate": 32.8
   },
   {
     "date": "2026-02-10",
     "update_time": "16:40",
     "sow_inventory": 4040,
-    "pig_grain_ratio": 5.60,
+    "pig_grain_ratio": 5.6,
     "import_volume": 8.2,
     "sow_feed_sales": null,
     "piglet_price": 28.5,
-    "cull_sow_price": 8.60,
+    "cull_sow_price": 8.6,
     "cold_storage_rate": 31.5
   },
   {
     "date": "2026-03-10",
     "update_time": "16:42",
     "sow_inventory": 4005,
-    "pig_grain_ratio": 5.20,
+    "pig_grain_ratio": 5.2,
     "import_volume": 7.8,
     "sow_feed_sales": null,
     "piglet_price": 27.0,
-    "cull_sow_price": 8.20,
+    "cull_sow_price": 8.2,
     "cold_storage_rate": 30.8
   },
   {
@@ -67,8 +67,8 @@
   },
   {
     "date": "2026-06-10",
-    "update_time": "16:48",
-    "sow_inventory": 3904,
+    "update_time": "17:45",
+    "sow_inventory": 3904.0,
     "pig_grain_ratio": 4.11,
     "import_volume": 7.0,
     "sow_feed_sales": null,
