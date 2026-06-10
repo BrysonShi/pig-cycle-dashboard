@@ -5,10 +5,12 @@
 
 // ===== 配置 =====
 const DATA_URL = 'data/latest.json';
+const HISTORY_URL = 'data/history.json';
 const WEBHOOK_URL = window.WEWORK_WEBHOOK || ''; // 企微webhook由GitHub Actions调用，前端不写明文
 
 // ===== 全局状态 =====
 let rawData = null;
+let historyData = null;  // [{date, sow_inventory, ...}, ...]
 
 // ===== 工具函数 =====
 
@@ -52,15 +54,32 @@ function calcPercentile(value, history) {
 // ===== 数据加载 =====
 
 async function loadData() {
-  try {
-    const resp = await fetch(DATA_URL + '?t=' + Date.now());
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    rawData = await resp.json();
-    return rawData;
-  } catch (err) {
-    console.warn('[Dashboard] fetch failed, using embedded mock:', err.message);
-    return getEmbeddedMock();
+  // 并行加载 latest + history
+  const [latestResp, historyResp] = await Promise.allSettled([
+    fetch(DATA_URL + '?t=' + Date.now()),
+    fetch(HISTORY_URL + '?t=' + Date.now())
+  ]);
+
+  let latest = null;
+  if (latestResp.status === 'fulfilled' && latestResp.value.ok) {
+    latest = await latestResp.value.json();
+  } else {
+    console.warn('[Dashboard] latest.json fetch failed:', latestResp.status === 'rejected' ? latestResp.reason : 'HTTP ' + latestResp.value.status);
+    latest = getEmbeddedMock();
   }
+
+  let history = [];
+  if (historyResp.status === 'fulfilled' && historyResp.value.ok) {
+    try {
+      history = await historyResp.value.json();
+    } catch (e) {
+      console.warn('[Dashboard] history.json parse failed:', e.message);
+    }
+  } else {
+    console.info('[Dashboard] history.json 暂无/加载失败，sparkline 将使用 latest.json 内嵌 history（若有）');
+  }
+
+  return { latest, history };
 }
 
 function getEmbeddedMock() {
@@ -76,6 +95,44 @@ function getEmbeddedMock() {
     alert_level: { level: 'yellow', level_label: '黄色预警', summary: '数据加载失败' },
     action_suggestions: []
   };
+}
+
+/**
+ * 把 history.json 数组按 key 索引后，覆盖到每张指标卡的 history 字段。
+ * 优先级：history.json 时间序列 > latest.json 内嵌 history
+ */
+function mergeHistoryIntoIndicators(data, historyArr) {
+  if (!Array.isArray(historyArr) || historyArr.length === 0) return;
+
+  // 按 key 聚合
+  const seriesMap = {};
+  for (const row of historyArr) {
+    if (!row || !row.date) continue;
+    for (const [k, v] of Object.entries(row)) {
+      if (k === 'date' || k === 'update_time') continue;
+      if (!seriesMap[k]) seriesMap[k] = [];
+      seriesMap[k].push({ date: row.date, value: v });
+    }
+  }
+  // 按日期升序
+  for (const k of Object.keys(seriesMap)) {
+    seriesMap[k].sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  const chains = ['breeding_chain', 'frozen_chain'];
+  for (const c of chains) {
+    if (!data[c] || !data[c].indicators) continue;
+    for (const ind of data[c].indicators) {
+      const series = seriesMap[ind.key];
+      if (!series) continue;
+      // 转成纯数值数组，过滤 null
+      ind.history = series.map(s => s.value);
+      ind.history_dates = series.map(s => s.date);
+      // 同时记录首尾
+      ind.history_first = series[0];
+      ind.history_last = series[series.length - 1];
+    }
+  }
 }
 
 // ===== 渲染：预警条 =====
@@ -242,13 +299,47 @@ function renderInterpretation(key, panel) {
     </div>
   `).join('');
 
-  // 当前解读
+  // position / change_meaning 现在是函数式，调用拿结果
+  const pos = (typeof interp.position === 'function')
+    ? interp.position(ind, rawData)
+    : (interp.position || {});
+
   const dir = ind.direction || 'neutral';
-  const change = interp.change_meaning || {};
-  const changeInfo = change[dir] || {};
+  const changeInfo = (typeof interp.change_meaning === 'function')
+    ? interp.change_meaning(ind, rawData)
+    : ((interp.change_meaning || {})[dir] || {});
 
   // 历史百分位
   const pct = calcPercentile(ind.current, ind.history);
+
+  // 走势小图：缩略 sparkline + 区间标注
+  const histFirst = ind.history_first;
+  const histLast = ind.history_last;
+  const histLen = (ind.history_dates && ind.history_dates.length) || 0;
+  const histDelta = (histFirst && histLast && histFirst.value !== null && histLast.value !== null)
+    ? (histLast.value - histFirst.value).toFixed(2)
+    : null;
+  const histDeltaPct = (histFirst && histLast && histFirst.value !== null && histFirst.value !== 0)
+    ? (((histLast.value - histFirst.value) / histFirst.value) * 100).toFixed(1)
+    : null;
+
+  let histSummary = '';
+  if (histLen >= 2 && histDelta !== null) {
+    const deltaSign = histDelta > 0 ? '+' : '';
+    const pctSign = histDeltaPct > 0 ? '+' : '';
+    const unit = ind.unit || '';
+    const trendLabel = histDelta > 0.01 ? '↑ 累计上行' : histDelta < -0.01 ? '↓ 累计下行' : '→ 累计持平';
+    histSummary = `<p style="font-size:0.72rem;color:#8B7355">
+      <strong>近${histLen}天走势</strong>：${trendLabel}
+      ${deltaSign}${histDelta}${unit}
+      (${pctSign}${histDeltaPct}%)
+      <br>
+      起点：${histFirst.date} = ${histFirst.value}${unit}
+      终点：${histLast.date} = ${histLast.value}${unit}
+    </p>`;
+  } else if (histLen < 2) {
+    histSummary = `<p style="font-size:0.72rem;color:#8B7355">📅 历史数据积累中（当前 ${histLen} 天）</p>`;
+  }
 
   panel.innerHTML = `
     <button class="close-btn" onclick="this.closest('.interpretation-panel').classList.remove('active')">✕</button>
@@ -257,11 +348,13 @@ function renderInterpretation(key, panel) {
     <p style="margin-top:4px;color:#8B7355;font-size:0.75rem"><strong>为什么重要：</strong>${interp.why || ''}</p>
 
     <h4>📊 当前值位置</h4>
-    <p>${interp.position?.description || ''}</p>
-    ${pct ? `<p style="font-size:0.75rem;color:#8B7355">历史百分位约<strong>${pct}%</strong></p>` : ''}
-    ${interp.position?.interpretation ? `<div class="signal-box">💡 ${interp.position.interpretation}</div>` : ''}
+    <p>${pos.description || ''}</p>
+    ${pct !== null ? `<p style="font-size:0.75rem;color:#8B7355">历史分位数约<strong>${pct}%</strong>（基于 ${ind.history.filter(v => v !== null).length} 个有效历史点）</p>` : ''}
+    ${pos.interpretation ? `<div class="signal-box">💡 ${pos.interpretation}</div>` : ''}
 
-    <h4>${dir === 'rising' ? '📈' : dir === 'falling' ? '📉' : '➡️'} 当前走势解读</h4>
+    ${histSummary ? `<h4>📈 近期走势</h4>${histSummary}` : ''}
+
+    <h4>${dir === 'rising' ? '📈' : dir === 'falling' ? '📉' : '➡️'} 当前方向解读</h4>
     <p>${changeInfo.text || '暂无解读'}</p>
     ${changeInfo.signal ? `<div class="signal-box">${changeInfo.signal}</div>` : ''}
     ${changeInfo.action ? `<p style="font-size:0.75rem;color:#8B7355">→ ${changeInfo.action}</p>` : ''}
@@ -547,17 +640,25 @@ async function init() {
   const mask = document.getElementById('loadingMask');
   if (mask) mask.classList.remove('hidden');
 
-  const data = await loadData();
-  rawData = data;
+  const { latest, history } = await loadData();
+  rawData = latest;
+  historyData = history;
+
+  // 把 history 时间序列喂给每张指标卡（覆盖 latest.json 内嵌的 6 个 null）
+  if (Array.isArray(history) && history.length > 0) {
+    mergeHistoryIntoIndicators(rawData, history);
+    window.rawData = rawData;  // 暴露给 interpretations.js 用（cull_sow_price 需要 pork_price）
+    console.info(`[Dashboard] 已合并 ${history.length} 天历史数据到 sparkline`);
+  }
 
   // 渲染各模块
-  renderDataSource(data);
-  renderAlertBar(data);
-  renderChainIndicators(data.breeding_chain, 'breedingIndicators');
-  renderChainIndicators(data.frozen_chain, 'frozenIndicators');
-  renderLinkageMatrix(data);
-  renderCyclePosition(data);
-  renderSuggestions(data);
+  renderDataSource(rawData);
+  renderAlertBar(rawData);
+  renderChainIndicators(rawData.breeding_chain, 'breedingIndicators');
+  renderChainIndicators(rawData.frozen_chain, 'frozenIndicators');
+  renderLinkageMatrix(rawData);
+  renderCyclePosition(rawData);
+  renderSuggestions(rawData);
   renderKnowledgeBase();
 
   // 隐藏加载

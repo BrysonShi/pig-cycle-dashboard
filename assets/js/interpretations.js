@@ -1,26 +1,148 @@
 /**
  * 生猪行业数据解读层
- * 基于主人讲解的养殖链/冻品链联动逻辑编写
+ *
+ * 设计原则：
+ *  - 静态内容（什么是/为什么重要/历史相似情形/联动传导）→ 写死字符串
+ *  - 动态内容（当前值位置/当前走势解读）→ 函数，根据 latest.json 实际值实时算
+ *  - 阈值/区间/分位判断逻辑 → 集中在 thresholds 对象，便于一处改全局生效
+ *
+ * 渲染层（dashboard.js）调用：
+ *    INTERPRETATIONS[key].position(ind)        → { description, interpretation }
+ *    INTERPRETATIONS[key].change_meaning(ind)  → { text, signal, action? }
  */
+
+// ===== 阈值字典（一处改全局生效）=====
+const THRESHOLDS = {
+  // 能繁母猪存栏（万头）
+  sow_inventory: {
+    official_normal: 4100,         // 官方正常保有量
+    official_low: 3800,            // 正常区间下限
+    official_high: 4500,           // 正常区间上限
+    bottom_signal: 4000,           // 跌破=底部有效信号（2024年4月3986验证）
+    serious_surplus: 4500,         // 突破=严重过剩（2021年6月4564验证）
+    surplus_warn: 4200,            // 接近=产能过剩预警
+  },
+  // 仔猪价格（元/kg）
+  piglet_price: {
+    cost_line: 30,                 // 跌破=深度亏损
+    profit_bottom: 35,             // 盈亏线附近
+    reasonable: 40,                // 合理利润标志
+    overheated: 55,                // 突破=补栏过热
+    recent_5y_range: [30, 80],     // 近5年区间
+  },
+  // 淘汰母猪价格（元/kg）
+  cull_sow_price: {
+    normal_pig_price: 18,          // 假定正常商品猪价
+    panic_line_ratio: 0.35,        // 淘汰价/猪价 < 35% = 恐慌级
+    warn_line_ratio: 0.40,         // 淘汰价/猪价 < 40% = 压力级
+    danger_drop_pct: -10,          // 月环比跌幅超 = 危险信号
+  },
+  // 母猪料销量（万吨/月）
+  sow_feed_sales: {
+    expand_line: 55,               // > = 产能扩张
+    shrink_line: 42,               // < = 产能收缩
+    recent_range: [35, 60],
+  },
+  // 冻品库容率（%）
+  cold_storage_rate: {
+    stockpile_warn: 60,            // > = 积压预警
+    high: 50,                      // 50-60 = 偏高
+    normal_low: 30,                // <30 = 偏低（底部支撑）
+    low_extreme: 20,               // 非瘟级别低位
+  },
+  // 猪粮比
+  pig_grain_ratio: {
+    profit_balance: 6,             // 盈亏平衡线
+    deep_loss: 5,                  // < = 深度亏损触发收储
+    storage_warn: 5.5,             // < = 预警
+    super_profit: 9,               // > = 暴利触发放储
+    release_warn: 8,
+  },
+  // 进口量（万吨/月）
+  import_volume: {
+    high_pressure: 20,             // > = 进口压制明显
+    normal_low: 10,                // < = 国内偏紧
+    recent_range: [8, 45],
+  },
+};
+
+// ===== 工具函数 =====
+function pctOf(val, base, digits = 1) {
+  return ((val / base) * 100).toFixed(digits);
+}
+
+function fmtVal(val, digits = 1) {
+  if (val === null || val === undefined) return '—';
+  return Number(val).toLocaleString('zh-CN', { maximumFractionDigits: digits, minimumFractionDigits: digits });
+}
+
+function directionArrow(dir) {
+  return { rising: '↑', falling: '↓', neutral: '→' }[dir] || '→';
+}
+
+function directionLabel(dir) {
+  return { rising: '上升', falling: '下降', neutral: '持平' }[dir] || '持平';
+}
+
+// ===== 解读层 =====
 const INTERPRETATIONS = {
 
   sow_inventory: {
     what: "能繁母猪存栏是处于繁殖状态的母猪数量，是判断未来10个月出栏量的最核心先行指标。母猪妊娠约4个月+育肥约6个月=10个月传导。",
     why: "能繁=产能。能繁存栏决定未来肉的供给天花板。官方口径：正常保有量4100万头，波动区间3800-4500万头。",
-    position: {
-      description: "当前4068万头，处于正常保有量99.2%，接近4200万头上限。历史分位数约65%。",
-      interpretation: "已接近产能过剩预警线，若突破4200万头，未来10个月出栏压力将显著增加"
-    },
-    change_meaning: {
-      rising: {
-        text: "能繁环比+0.8% → 补栏积极。传导：补栏↑ → 10个月后出栏↑ → 远期猪价下行压力。",
-        signal: "⚠️ 当前补栏高峰将在2027年Q1-Q2集中转化为出栏高峰",
-        action: "养殖端应控节奏，避免重蹈2021年产能过剩→深度亏损覆辙"
-      },
-      falling: {
-        text: "能繁环比下降 → 产能去化信号。主动收缩是周期底部典型特征。",
-        signal: "✅ 去化越彻底，未来反弹空间越大"
+    position: function(ind) {
+      const t = THRESHOLDS.sow_inventory;
+      const v = ind.current;
+      const pct = pctOf(v, t.official_normal);
+      let zone = '';
+      if (v < t.official_low) {
+        zone = '深度去化区（低于正常保有量下限）';
+      } else if (v < t.bottom_signal) {
+        zone = `跌破4000万头 → 周期底部有效信号区`;
+      } else if (v < t.surplus_warn) {
+        zone = '正常区间（供需相对平衡）';
+      } else if (v < t.serious_surplus) {
+        zone = '⚠️ 接近产能过剩预警线';
+      } else {
+        zone = '🚨 突破4500万头 → 严重产能过剩';
       }
+      // 分位数（基于 history 数组）
+      let pctileStr = '';
+      if (ind.history && ind.history.length >= 2) {
+        const sorted = [...ind.history].filter(v => v !== null).sort((a, b) => a - b);
+        if (sorted.length > 0) {
+          const below = sorted.filter(x => x <= v).length;
+          const pctile = Math.round((below / sorted.length) * 100);
+          pctileStr = `历史分位数约${pctile}%`;
+        }
+      }
+      return {
+        description: `当前${fmtVal(v)}万头，为正常保有量${pct}%（${v < t.official_normal ? '低于' : '高于'}4100万头官方基准${Math.abs(v - t.official_normal).toFixed(0)}万头）${pctileStr ? '，' + pctileStr : ''}。${zone}。`,
+        interpretation: v < t.bottom_signal
+          ? '📍 跌破4000万头是周期底部有效信号，产能去化已深入'
+          : v > t.surplus_warn
+            ? '⚠️ 接近产能过剩预警线，若突破4200万头，未来10个月出栏压力将显著增加'
+            : '产能处于正常区间，供需相对平衡'
+      };
+    },
+    change_meaning: function(ind) {
+      const mom = ind.mom_pct || 0;
+      const dir = ind.direction || 'neutral';
+      if (dir === 'falling') {
+        return {
+          text: `能繁环比${mom.toFixed(1)}% → 产能去化信号。主动收缩是周期底部典型特征。`,
+          signal: '✅ 去化越彻底，未来反弹空间越大',
+          action: '底部区间可关注远期做多机会，但需等待去化充分'
+        };
+      }
+      if (dir === 'rising') {
+        return {
+          text: `能繁环比+${mom.toFixed(1)}% → 补栏积极。传导：补栏↑ → 10个月后出栏↑ → 远期猪价下行压力。`,
+          signal: '⚠️ 当前补栏高峰将在2027年Q1-Q2集中转化为出栏高峰',
+          action: '养殖端应控节奏，避免重蹈2021年产能过剩→深度亏损覆辙'
+        };
+      }
+      return { text: '能繁基本稳定，产能端未现明显变化。', signal: '➡️ 持续观察' };
     },
     historical_similar: [
       { period: "2021年6月", data: "能繁峰值4564万头 → 猪价从35跌至10元/kg（-71%），历时4个月触底", lesson: "突破4500万头是严重过剩信号" },
@@ -32,13 +154,52 @@ const INTERPRETATIONS = {
   piglet_price: {
     what: "仔猪价格（15kg标准体重仔猪出栏价）是养殖链核心中游指标，反映当前仔猪市场供需。能繁存栏的同步验证指标。",
     why: "仔猪价高→补栏积极→未来出栏压力增大→远期猪价看空。仔猪价低→补栏低迷→产能去化→远期猪价看涨。与能繁存栏相关系数约0.85。",
-    position: {
-      description: "当前42.5元/kg，近5年区间65%分位（30-80元/kg）。处于下行通道，连续3周下跌，逼近35元/kg盈亏线。",
-      interpretation: "跌破30元/kg则养殖端深度亏损；突破55元/kg则补栏过热"
+    position: function(ind) {
+      const t = THRESHOLDS.piglet_price;
+      const v = ind.current;
+      let zone = '';
+      if (v < t.cost_line) zone = '🔴 跌破成本价（深度亏损）';
+      else if (v < t.profit_bottom) zone = '盈亏线附近，养殖端微亏';
+      else if (v < t.reasonable) zone = '合理利润区下沿';
+      else if (v < t.overheated) zone = '合理利润区（40-55元/kg）';
+      else zone = '⚠️ 突破55元/kg → 补栏过热';
+      // 分位
+      let pctileStr = '';
+      if (ind.history && ind.history.length >= 2) {
+        const sorted = [...ind.history].filter(v => v !== null).sort((a, b) => a - b);
+        if (sorted.length > 0) {
+          const below = sorted.filter(x => x <= v).length;
+          const pctile = Math.round((below / sorted.length) * 100);
+          pctileStr = `历史分位数约${pctile}%（近5年区间${t.recent_5y_range[0]}-${t.recent_5y_range[1]}元/kg）`;
+        }
+      }
+      const dirArrow = directionArrow(ind.direction);
+      return {
+        description: `当前${fmtVal(v)}元/kg${pctileStr ? '，' + pctileStr : ''}。${zone}。`,
+        interpretation: v < t.cost_line
+          ? '跌破30元/kg则养殖端深度亏损'
+          : v > t.overheated
+            ? '突破55元/kg则补栏过热'
+            : '仔猪价格反映补栏意愿，与能繁存栏共同验证产能变化'
+      };
     },
-    change_meaning: {
-      rising: { text: "仔猪价涨→补栏意愿增强，远期出栏增加（10个月后）。", signal: "↑ 远期供给压力积累中" },
-      falling: { text: "仔猪价跌（当前-6.2%）→养殖户对后市悲观，产能去化第一步，领先淘汰母猪约1-2月。", signal: "↓ 本轮周期顶部早期预警" }
+    change_meaning: function(ind) {
+      const mom = ind.mom_pct || 0;
+      const dir = ind.direction || 'neutral';
+      if (dir === 'rising') {
+        return {
+          text: `仔猪价环比+${mom.toFixed(1)}% → 补栏意愿增强，远期出栏增加（10个月后）。`,
+          signal: '↑ 远期供给压力积累中'
+        };
+      }
+      if (dir === 'falling') {
+        return {
+          text: `仔猪价环比${mom.toFixed(1)}% → 养殖户对后市悲观，产能去化第一步，领先淘汰母猪约1-2月。`,
+          signal: '↓ 本轮周期顶部早期预警 / 底部蓄力信号',
+          action: '若持续下行破成本线，叠加能繁下降 → 周期底部信号增强'
+        };
+      }
+      return { text: '仔猪价格基本稳定，补栏意愿与去化压力处于均衡。', signal: '➡️ 持续观察' };
     },
     historical_similar: [
       { period: "2021年9-10月", data: "仔猪跌至10-12元/kg（深度亏损区），随后猪价暴跌至10元/kg", lesson: "跌破成本价（约25-30元/kg）是周期底部信号" },
@@ -50,13 +211,53 @@ const INTERPRETATIONS = {
   cull_sow_price: {
     what: "淘汰母猪价格是被淘汰繁殖母猪作为肉用出售的价格，通常为正常商品猪价的50-60%。",
     why: "淘汰价暴跌（<正常猪价40%）意味着现金流紧张、恐慌性淘汰，是周期底部最强预警信号。",
-    position: {
-      description: "当前8.1元/kg，约为正常商品猪价（18元/kg）的45%，处于偏低水平。历史分位数约30%。",
-      interpretation: "45%的比例说明淘汰压力已出现，尚未达到恐慌级别（<35%）"
+    position: function(ind) {
+      const t = THRESHOLDS.cull_sow_price;
+      const v = ind.current;
+      // 估算与商品猪价比值（如果 rawData 里有 pork_price 就用实际值，否则用 18 默认）
+      const porkPrice = (window.rawData && window.rawData.pork_price) || t.normal_pig_price;
+      const ratio = v / porkPrice;
+      let zone = '';
+      if (ratio < t.panic_line_ratio) zone = '🚨 恐慌级淘汰（<商品猪价35%）';
+      else if (ratio < t.warn_line_ratio) zone = '⚠️ 压力级淘汰（<商品猪价40%）';
+      else if (ratio < 0.5) zone = '偏低（45-50%）';
+      else if (ratio < 0.6) zone = '正常（50-60%）';
+      else zone = '正常偏高';
+      let pctileStr = '';
+      if (ind.history && ind.history.length >= 2) {
+        const sorted = [...ind.history].filter(v => v !== null).sort((a, b) => a - b);
+        if (sorted.length > 0) {
+          const below = sorted.filter(x => x <= v).length;
+          const pctile = Math.round((below / sorted.length) * 100);
+          pctileStr = `历史分位数约${pctile}%`;
+        }
+      }
+      return {
+        description: `当前${fmtVal(v)}元/kg，约为商品猪价（${porkPrice}元/kg）的${(ratio * 100).toFixed(0)}%${pctileStr ? '，' + pctileStr : ''}。${zone}。`,
+        interpretation: ratio < t.warn_line_ratio
+          ? '🚨 淘汰压力已出现，现金流恶化，需密切关注'
+          : '淘汰价处于正常区间，行业更新换代为主'
+      };
     },
-    change_meaning: {
-      rising: { text: "淘汰价涨→主动更新品种，资金链尚可。", signal: "→ 正常更新，关注能繁绝对量" },
-      falling: { text: "淘汰价跌（当前-12.8%）→现金流告急，加速淘汰。跌至7元/kg（商品猪价50%）以下 = 行业亏损最严重期。", signal: "🚨 危险信号：下跌10%以上是产能快速去化前奏" }
+    change_meaning: function(ind) {
+      const mom = ind.mom_pct || 0;
+      const dir = ind.direction || 'neutral';
+      if (dir === 'rising') {
+        return {
+          text: `淘汰价环比+${mom.toFixed(1)}% → 主动更新品种，资金链尚可。`,
+          signal: '→ 正常更新，关注能繁绝对量'
+        };
+      }
+      if (dir === 'falling') {
+        return {
+          text: `淘汰价环比${mom.toFixed(1)}% → 现金流告急，加速淘汰。`,
+          signal: mom < t.danger_drop_pct
+            ? '🚨 危险信号：下跌10%以上是产能快速去化前奏'
+            : '淘汰加速，产能去化进行中',
+          action: '跌破7元/kg（商品猪价50%）= 行业亏损最严重期'
+        };
+      }
+      return { text: '淘汰价基本稳定，行业更新换代节奏正常。', signal: '➡️ 持续观察' };
     },
     historical_similar: [
       { period: "2021年9-10月", data: "淘汰价跌至6-7元/kg（商品猪价约10元/kg），现金流断裂，随后能繁快速去化", lesson: "淘汰价与猪价同步下跌=现金流恶化" },
@@ -68,13 +269,59 @@ const INTERPRETATIONS = {
   sow_feed_sales: {
     what: "母猪料销量是饲料企业向养殖端销售母猪专用饲料的总量，反映当前母猪存栏的实际利用状态。",
     why: "母猪料增=产能扩大；销量降=产能收缩。饲料数据比存栏数据更及时（先行1-2周）。",
-    position: {
-      description: "当前48.2万吨/月，历史65%分位（约35-60万吨/月）。处于扩张区间上沿，接近55万吨上限。",
-      interpretation: ">55万吨=产能扩张期；<42万吨=产能收缩期"
+    position: function(ind) {
+      const t = THRESHOLDS.sow_feed_sales;
+      const v = ind.current;
+      if (v === null || v === undefined) {
+        return {
+          description: '母猪料销量数据当前未获取（公开渠道覆盖有限）。',
+          interpretation: '建议参考能繁母猪存栏作为替代指标（高度同步，相关系数>0.9）'
+        };
+      }
+      let zone = '';
+      if (v > t.expand_line) zone = '产能扩张期上沿（接近55万吨上限）';
+      else if (v > t.shrink_line) zone = '正常区间（42-55万吨）';
+      else zone = '产能收缩期';
+      let pctileStr = '';
+      if (ind.history && ind.history.length >= 2) {
+        const sorted = [...ind.history].filter(v => v !== null).sort((a, b) => a - b);
+        if (sorted.length > 0) {
+          const below = sorted.filter(x => x <= v).length;
+          const pctile = Math.round((below / sorted.length) * 100);
+          pctileStr = `历史分位数约${pctile}%`;
+        }
+      }
+      return {
+        description: `当前${fmtVal(v)}万吨/月${pctileStr ? '，' + pctileStr : ''}。${zone}。`,
+        interpretation: v > t.expand_line
+          ? '母猪料高位 = 产能扩张，周期顶部右侧'
+          : v < t.shrink_line
+            ? '母猪料低位 = 产能收缩，布局周期反转观察窗口'
+            : '母猪料处于正常区间'
+      };
     },
-    change_meaning: {
-      rising: { text: "母猪料+1.5%→补栏积极。传导：仔猪出生量增→10月后出栏增。", signal: "↑ 产能扩张，周期顶部右侧" },
-      falling: { text: "母猪料降→产能收缩，领先能繁存栏下降1-2月。", signal: "↓ 去化初期，布局周期反转观察窗口" }
+    change_meaning: function(ind) {
+      if (ind.current === null || ind.current === undefined) {
+        return {
+          text: '母猪料销量数据缺失，无法判断产能扩张/收缩方向。',
+          signal: '⚠️ 数据缺口，建议配合能繁存栏交叉验证'
+        };
+      }
+      const mom = ind.mom_pct || 0;
+      const dir = ind.direction || 'neutral';
+      if (dir === 'rising') {
+        return {
+          text: `母猪料环比+${mom.toFixed(1)}% → 补栏积极。传导：仔猪出生量增 → 10月后出栏增。`,
+          signal: '↑ 产能扩张，周期顶部右侧'
+        };
+      }
+      if (dir === 'falling') {
+        return {
+          text: `母猪料环比${mom.toFixed(1)}% → 产能收缩，领先能繁存栏下降1-2月。`,
+          signal: '↓ 去化初期，布局周期反转观察窗口'
+        };
+      }
+      return { text: '母猪料销量基本稳定，产能端未现明显变化。', signal: '➡️ 持续观察' };
     },
     historical_similar: [
       { period: "2021年4-6月", data: "母猪料约55万吨（高位）+能繁4564万头（双顶）→随后周期下行", lesson: "两者双顶=周期顶部最强信号" },
@@ -86,13 +333,49 @@ const INTERPRETATIONS = {
   cold_storage_rate: {
     what: "冻品库容率是冷库中猪肉冻品实际库存占设计库容的比例，反映冻品市场供需平衡。",
     why: "库容率高（>60%）→冻品积压→贸易商现金流紧→被迫降价出库→压制鲜肉价；库容率低（<30%）→收储空间大→对猪价有底部支撑。",
-    position: {
-      description: "当前52.3%，历史55%分位（25-65%区间）。处于偏高区域，出库压力逐步增加。",
-      interpretation: ">60%=积压预警；50-60%=偏高；30-50%=正常；<30%=偏低"
+    position: function(ind) {
+      const t = THRESHOLDS.cold_storage_rate;
+      const v = ind.current;
+      let zone = '';
+      if (v > t.stockpile_warn) zone = '🔴 积压预警（>60%）';
+      else if (v > t.high) zone = '⚠️ 偏高（50-60%）';
+      else if (v > t.normal_low) zone = '正常（30-50%）';
+      else if (v > t.low_extreme) zone = '偏低（20-30%，对猪价有底部支撑）';
+      else zone = '极低（<20%，非瘟级别缺口）';
+      let pctileStr = '';
+      if (ind.history && ind.history.length >= 2) {
+        const sorted = [...ind.history].filter(v => v !== null).sort((a, b) => a - b);
+        if (sorted.length > 0) {
+          const below = sorted.filter(x => x <= v).length;
+          const pctile = Math.round((below / sorted.length) * 100);
+          pctileStr = `历史分位数约${pctile}%`;
+        }
+      }
+      return {
+        description: `当前${fmtVal(v)}%${pctileStr ? '，' + pctileStr : ''}。${zone}。`,
+        interpretation: v > t.stockpile_warn
+          ? '🚨 冻品积压，贸易商预计1-2月后被迫降价出库'
+          : v < t.normal_low
+            ? '✅ 低库容对猪价有底部支撑'
+            : '冻品供需相对平衡'
+      };
     },
-    change_meaning: {
-      rising: { text: "库容率升（+3.1%）→进口+国内冻品持续入库，出库慢于入库，库存压力积累。", signal: "↑ 贸易商预计1-2月后被迫降价出库" },
-      falling: { text: "库容率降→出库快于入库，库存去化，对鲜肉压力减轻。", signal: "↓ 对猪价底部有支撑，关注去化速度" }
+    change_meaning: function(ind) {
+      const mom = ind.mom_pct || 0;
+      const dir = ind.direction || 'neutral';
+      if (dir === 'rising') {
+        return {
+          text: `库容率环比+${mom.toFixed(1)}% → 进口+国内冻品持续入库，出库慢于入库，库存压力积累。`,
+          signal: '↑ 贸易商预计1-2月后被迫降价出库'
+        };
+      }
+      if (dir === 'falling') {
+        return {
+          text: `库容率环比${mom.toFixed(1)}% → 出库快于入库，库存去化，对鲜肉压力减轻。`,
+          signal: '↓ 对猪价底部有支撑，关注去化速度'
+        };
+      }
+      return { text: '冻品库容率基本稳定，库存端未现明显变化。', signal: '➡️ 持续观察' };
     },
     historical_similar: [
       { period: "2021年5-8月", data: "库容率55-60%，贸易商等收储托价，但收储有限（每次2-3万吨），未能阻止猪价跌至10元/kg", lesson: "冻品库存高≠收储能托价，收储量远小于过剩产能" },
@@ -104,13 +387,53 @@ const INTERPRETATIONS = {
   pig_grain_ratio: {
     what: "猪粮比=生猪价格÷玉米价格，是衡量养殖盈亏的核心指标。猪的主饲料是玉米（占成本60-65%）。盈亏平衡线为6:1。",
     why: "猪粮比>6→盈利；<6→亏损；<5→深度亏损触发收储；>9→暴利触发放储。猪粮比是政策调控的核心触发条件。",
-    position: {
-      description: "当前5.8（猪价约18元/kg，玉米约3.1元/kg），处于盈亏平衡线附近。养殖端利润微薄。",
-      interpretation: ">9=暴利；6-9=正常盈利；5-6=微利/亏损边缘；<5=深度亏损（触发收储预案）"
+    position: function(ind) {
+      const t = THRESHOLDS.pig_grain_ratio;
+      const v = ind.current;
+      let zone = '';
+      if (v < t.deep_loss) zone = '🚨 深度亏损区（<5.0，触发收储）';
+      else if (v < t.storage_warn) zone = '⚠️ 收储预警区（5.0-5.5）';
+      else if (v < t.profit_balance) zone = '亏损边缘（5.5-6.0）';
+      else if (v < t.release_warn) zone = '正常盈利（6.0-8.0）';
+      else if (v < t.super_profit) zone = '高盈利（8.0-9.0）';
+      else zone = '🚨 暴利区（>9.0，触发放储）';
+      let pctileStr = '';
+      if (ind.history && ind.history.length >= 2) {
+        const sorted = [...ind.history].filter(v => v !== null).sort((a, b) => a - b);
+        if (sorted.length > 0) {
+          const below = sorted.filter(x => x <= v).length;
+          const pctile = Math.round((below / sorted.length) * 100);
+          pctileStr = `历史分位数约${pctile}%`;
+        }
+      }
+      return {
+        description: `当前${fmtVal(v, 2)}${pctileStr ? '，' + pctileStr : ''}。${zone}。`,
+        interpretation: v < t.deep_loss
+          ? '🚨 猪粮比<5已触发国家收储预案'
+          : v < t.storage_warn
+            ? '⚠️ 持续2周以上跌破5.5将触发国家收储公告'
+            : v > t.super_profit
+              ? '🚨 猪粮比>9触发放储预案'
+              : '猪粮比处于正常区间'
+      };
     },
-    change_meaning: {
-      rising: { text: "猪粮比升→养殖盈利改善。", signal: "↑ 关注持续性，因猪价涨比成本降更可持续" },
-      falling: { text: "猪粮比降（-2.5%）→盈亏压力加大。持续<5.5触发收储预警。", signal: "↓ 持续2周以上跌破5.5将触发国家收储公告" }
+    change_meaning: function(ind) {
+      const mom = ind.mom_pct || 0;
+      const dir = ind.direction || 'neutral';
+      if (dir === 'rising') {
+        return {
+          text: `猪粮比环比+${mom.toFixed(1)}% → 养殖盈利改善。`,
+          signal: '↑ 关注持续性，因猪价涨比成本降更可持续'
+        };
+      }
+      if (dir === 'falling') {
+        return {
+          text: `猪粮比环比${mom.toFixed(1)}% → 盈亏压力加大。`,
+          signal: '↓ 持续2周以上跌破5.5将触发国家收储公告',
+          action: '跌破5.0=收储红线，跌破4.5=行业现金流最后防线'
+        };
+      }
+      return { text: '猪粮比基本稳定，盈亏状态未现明显变化。', signal: '➡️ 持续观察' };
     },
     historical_similar: [
       { period: "2021年6-10月", data: "猪粮比从6.5速跌至4.5（猪价10+玉米3），启动多轮收储但量有限（13万吨），未能阻止跌至10元/kg", lesson: "收储规模远不足以对冲产能过剩，<5是现金流最后防线" },
@@ -122,13 +445,47 @@ const INTERPRETATIONS = {
   import_volume: {
     what: "猪肉及杂碎进口量（万吨/月）是每月海关统计的猪肉类产品进口总量，含鲜冷冻猪肉和猪杂碎。",
     why: "进口增=国内供给补充→压制国内猪价。进口冻肉成本约16-18元/kg，通常低于国内鲜肉价。",
-    position: {
-      description: "当前14.2万吨/月，历史40%分位（8-45万吨/月）。正常偏低，主要因国际价格偏高+国内产能恢复。",
-      interpretation: "正常区间10-18万吨；>20万吨=进口压制明显；<10万吨=国内供给偏紧"
+    position: function(ind) {
+      const t = THRESHOLDS.import_volume;
+      const v = ind.current;
+      let zone = '';
+      if (v > t.high_pressure) zone = '进口压制明显（>20万吨）';
+      else if (v > t.normal_low) zone = '正常区间（10-20万吨）';
+      else zone = '偏低（<10万吨，国内供给偏紧或国际价高）';
+      let pctileStr = '';
+      if (ind.history && ind.history.length >= 2) {
+        const sorted = [...ind.history].filter(v => v !== null).sort((a, b) => a - b);
+        if (sorted.length > 0) {
+          const below = sorted.filter(x => x <= v).length;
+          const pctile = Math.round((below / sorted.length) * 100);
+          pctileStr = `历史分位数约${pctile}%（近5年区间${t.recent_range[0]}-${t.recent_range[1]}万吨）`;
+        }
+      }
+      return {
+        description: `当前${fmtVal(v)}万吨/月${pctileStr ? '，' + pctileStr : ''}。${zone}。`,
+        interpretation: v > t.high_pressure
+          ? '进口压制国内猪价'
+          : v < t.normal_low
+            ? '进口偏低，边际利好国内'
+            : '进口对国内供需影响中性'
+      };
     },
-    change_meaning: {
-      rising: { text: "进口增→国际冻肉补充国内，压制国内猪价。", signal: "↑ 短期供给增加，关注来源国结构（欧盟/美国/巴西）" },
-      falling: { text: "进口减（-8.2%）→国内产能恢复+国际价格偏高，进口优势减弱。", signal: "↓ 边际利好国内，但影响有限（进口仅占国内消费约3-5%）" }
+    change_meaning: function(ind) {
+      const mom = ind.mom_pct || 0;
+      const dir = ind.direction || 'neutral';
+      if (dir === 'rising') {
+        return {
+          text: `进口环比+${mom.toFixed(1)}% → 国际冻肉补充国内，压制国内猪价。`,
+          signal: '↑ 短期供给增加，关注来源国结构（欧盟/美国/巴西）'
+        };
+      }
+      if (dir === 'falling') {
+        return {
+          text: `进口环比${mom.toFixed(1)}% → 国内产能恢复+国际价格偏高，进口优势减弱。`,
+          signal: '↓ 边际利好国内，但影响有限（进口仅占国内消费约3-5%）'
+        };
+      }
+      return { text: '进口量基本稳定，对国内供需影响中性。', signal: '➡️ 持续观察' };
     },
     historical_similar: [
       { period: "2020年", data: "进口量高达438万吨（峰值），有效补充非瘟缺口；2021年产能恢复后骤降", lesson: "进口是调节国内供需的边际变量，不能作为主导因素" }
@@ -139,18 +496,40 @@ const INTERPRETATIONS = {
   gov_reserve: {
     what: "政府收放储是国家发改委通过华商储备中心公开竞价买卖猪肉。收储=买入（托底需求）；放储=卖出（平抑供给）。",
     why: "收放储信号意义>实质规模（每次2-3万吨，约占全国日消费量10-20%），但传递政府调控意图，影响市场情绪。",
-    position: {
-      description: "当前0轮次（无操作）。正数=放储；负数=收储；0=无干预。",
-      interpretation: "连续3周猪粮比>9:1触发放储；<5:1触发收储。当前猪粮比5.8，距收储线（5.0）还有距离。"
+    position: function(ind) {
+      const t = THRESHOLDS.pig_grain_ratio;
+      const v = ind.current;
+      let zone = '';
+      if (v > 0) zone = '近期有放储操作';
+      else if (v < 0) zone = '近期有收储操作';
+      else zone = '近期无操作';
+      return {
+        description: `当前${v}轮次（正数=放储，负数=收储，0=无干预）。${zone}。`,
+        interpretation: '收放储与猪粮比挂钩，但受冻品库容率制约（库容满则无法收储）'
+      };
     },
-    change_meaning: {
-      releasing: { text: "放储→官方认定供给过剩，短期情绪利空。", signal: "📉 不要依赖政府托价，加快出栏" },
-      stockpiling: { text: "收储→官方认定供给不足，对猪价有托底作用。", signal: "📈 周期底部确认信号，但不能扭转趋势，历史上收储后仍继续下跌数周才见底" },
-      neutral: { text: "无操作→官方认为供需正常，不干预。", signal: "→ 猪粮比逼近5.0或9.0时随时可能启动" }
+    change_meaning: function(ind) {
+      const dir = ind.direction || 'neutral';
+      if (dir === 'rising') {
+        return {
+          text: '放储 → 官方认定供给过剩，短期情绪利空。',
+          signal: '📉 不要依赖政府托价，加快出栏'
+        };
+      }
+      if (dir === 'falling') {
+        return {
+          text: '收储 → 官方认定供给不足，对猪价有托底作用。',
+          signal: '📈 周期底部确认信号，但不能扭转趋势，历史上收储后仍继续下跌数周才见底'
+        };
+      }
+      return {
+        text: '无操作 → 官方认为供需正常，不干预。',
+        signal: '→ 猪粮比逼近5.0或9.0时随时可能启动'
+      };
     },
     historical_similar: [
       { period: "2021年", data: "累计收储约13万吨（猪粮比<5:1），未能阻止猪价从35跌至10元/kg（产能去化不足）", lesson: "收储信号意义>实质，不能替代产能去化" },
-      { period: "2023年", data: "猪粮比长期在5.5-6.0，多次触发预警但未实际收储（储备库容已满），以发布预警信息代替干预", lesson: "储备冻肉库容有限是现实约束，当前库容率52%仍有收储空间" }
+      { period: "2023年", data: "猪粮比长期在5.5-6.0，多次触发预警但未实际收储（储备库容已满），以发布预警信息代替干预", lesson: "储备冻肉库容有限是现实约束，当前库容率28.76%仍有收储空间" }
     ],
     linkage: "收放储与猪粮比挂钩，但受冻品库容率制约（库容满则无法收储）。"
   },
@@ -159,63 +538,54 @@ const INTERPRETATIONS = {
   linkage_matrix: {
     "rising+falling": {
       title: "养殖链↑ + 冻品链↓",
-      current: true,
       meaning: "补栏积极 + 冻品需求疲软 = 周期顶部形成中。建议：养殖端控存栏，冻品端加快出清。",
       signal: "🚨 顶部预警",
       historical: "类似2018年4-6月，随后下跌约8个月，跌幅约35%"
     },
     "rising+rising": {
       title: "养殖链↑ + 冻品链↑",
-      current: false,
       meaning: "补栏积极 + 冻品需求旺盛 = 周期上升中段，量利齐升。",
       signal: "📈 上升中段",
       historical: "类似2019年下半年（非瘟后产能恢复期）"
     },
     "rising+neutral": {
       title: "养殖链↑ + 冻品链→",
-      current: false,
       meaning: "补栏积极 + 冻品需求平稳 = 周期顶部初期，产能压力尚未传导至冻品端。",
       signal: "⚠️ 顶部初期",
       historical: "类似2020年初"
     },
     "falling+falling": {
       title: "养殖链↓ + 冻品链↓",
-      current: false,
       meaning: "去化加速 + 冻品需求疲软 = 周期底部确认。产能出清中，但需求低迷，反弹动力不足。",
       signal: "📍 底部确认",
-      historical: "类似2021年9-10月，底部横盘约3-4月后才反弹"
+      historical: "类似2021年9-10月、2022年3-6月，底部横盘约3-4月后才反弹"
     },
     "falling+rising": {
       title: "养殖链↓ + 冻品链↑",
-      current: false,
       meaning: "去化中 + 冻品需求回暖 = 周期触底反弹前夕，通常是拐点最强信号。",
       signal: "🎯 周期拐点",
       historical: "类似2024年3-4月，猪价从14涨至21元/kg（+50%）"
     },
     "falling+neutral": {
       title: "养殖链↓ + 冻品链→",
-      current: false,
       meaning: "去化中 + 冻品需求平稳 = 底部蓄力，产能逐步出清，需求未明显回暖。",
       signal: "📍 底部蓄力",
       historical: "类似2022年3-6月"
     },
     "neutral+falling": {
       title: "养殖链→ + 冻品链↓",
-      current: false,
       meaning: "产能平稳 + 冻品需求疲软 = 顶部整理，产能压力未明显积累但需求已现疲态。",
       signal: "⚠️ 顶部整理",
       historical: "类似2022年下半年"
     },
     "neutral+rising": {
       title: "养殖链→ + 冻品链↑",
-      current: false,
       meaning: "产能平稳 + 冻品需求回暖 = 底部反弹，产能压力释放，需求启动。",
       signal: "📈 底部反弹",
       historical: "类似2023年4-6月"
     },
     "neutral+neutral": {
       title: "养殖链→ + 冻品链→",
-      current: false,
       meaning: "产能平稳 + 冻品需求平稳 = 周期中性，供需相对平衡，无明显方向。",
       signal: "➡️ 中性",
       historical: "正常年份的常态"
