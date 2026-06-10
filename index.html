@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>生猪行业供需联动数据看板</title>
+  <meta name="description" content="养殖链 × 冻品链联动分析 | 能繁母猪 | 仔猪价格 | 冻品库容率 | 猪粮比 | 周期预警">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<!-- 加载遮罩 -->
+<div id="loadingMask" class="loading-mask">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">加载生猪数据中...</div>
+</div>
+
+<div class="dashboard-container">
+
+  <!-- 数据时间戳 + MOCK标签 -->
+  <div class="data-timestamp" id="dataTimestamp">—</div>
+
+  <!-- ==================== 模块0：预警条 ==================== -->
+  <div id="alertBar" class="alert-bar alert-green">
+    <span class="alert-dot"></span>
+    <span class="alert-status">绿色正常</span>
+    <span class="alert-text">各指标运行正常</span>
+    <span class="alert-time"></span>
+  </div>
+
+  <!-- ==================== 模块1：养殖链 ==================== -->
+  <div class="module-card">
+    <div class="module-title">
+      🐖 养殖链核心指标
+      <span style="font-size:0.75rem;font-weight:400;color:var(--color-text-secondary);margin-left:auto">
+        能繁 → 仔猪 → 淘汰母猪 → 母猪料（传导周期约10个月）
+      </span>
+    </div>
+    <div class="indicators-grid" id="breedingIndicators">
+      <!-- 指标卡片由 JS 动态渲染 -->
+    </div>
+  </div>
+
+  <!-- ==================== 模块2：冻品链 ==================== -->
+  <div class="module-card">
+    <div class="module-title">
+      🧊 冻品链核心指标
+      <span style="font-size:0.75rem;font-weight:400;color:var(--color-text-secondary);margin-left:auto">
+        库容率 → 猪粮比 → 进口量 → 收放储（传导周期约1-3个月）
+      </span>
+    </div>
+    <div class="indicators-grid" id="frozenIndicators">
+      <!-- 指标卡片由 JS 动态渲染 -->
+    </div>
+  </div>
+
+  <!-- ==================== 两条链联动说明 ==================== -->
+  <div class="linkage-intro">
+    <div class="linkage-intro-item">
+      <span class="chain-badge">养殖链</span>
+      <span>产能端 | 领先10个月</span>
+    </div>
+    <span class="linkage-intro-arrow">×</span>
+    <div class="linkage-intro-item">
+      <span class="chain-badge frozen-badge">冻品链</span>
+      <span>贸易/政策端 | 领先1-3个月</span>
+    </div>
+    <span class="linkage-intro-arrow">→</span>
+    <div class="linkage-intro-item">
+      <span style="font-weight:700;color:var(--color-accent)">周期拐点判断</span>
+    </div>
+  </div>
+
+  <!-- ==================== 模块3：联动矩阵 ==================== -->
+  <div class="module-card">
+    <div class="module-title">
+      📊 养殖链 × 冻品链 联动矩阵
+      <span style="font-size:0.75rem;font-weight:400;color:var(--color-text-secondary);margin-left:auto">
+        点击任意格子查看详细解读
+      </span>
+    </div>
+    <div class="matrix-container">
+      <!-- 矩阵9宫格 -->
+      <div class="matrix-grid" id="matrixGrid">
+        <!-- 由 JS 动态渲染 -->
+      </div>
+      <!-- 当前格子解读 -->
+      <div class="matrix-interpretation" id="matrixDetail">
+        <div class="current-title">
+          <span id="matrixCurrentTitle">—</span>
+        </div>
+        <p class="meaning-text" id="matrixMeaning">加载中...</p>
+        <div class="historical-hint" id="matrixHistorical"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 模块4：周期位置 ==================== -->
+  <div class="module-card">
+    <div class="module-title">
+      🔄 周期位置判断
+      <span style="font-size:0.75rem;font-weight:400;color:var(--color-text-secondary);margin-left:auto">
+        点击各阶段查看详细解释
+      </span>
+    </div>
+    <div class="cycle-position-grid" id="cyclePhaseGrid">
+      <!-- JS 渲染 -->
+    </div>
+    <p id="cycleDesc" style="margin-top:var(--space-md);font-size:0.85rem;color:var(--color-text-secondary);padding:0 var(--space-sm)"></p>
+    <div class="cycle-detail" id="cycleDetail" style="margin-top:var(--space-md)">
+      <!-- JS 渲染 -->
+    </div>
+  </div>
+
+  <!-- ==================== 模块5：操作建议 ==================== -->
+  <div class="module-card">
+    <div class="module-title">
+      💡 操作建议
+      <span style="font-size:0.75rem;font-weight:400;color:var(--color-text-secondary);margin-left:auto">
+        优先级从高到低，点击「展开深度分析」查看完整逻辑
+      </span>
+    </div>
+    <div class="suggestions-list" id="suggestionsList">
+      <!-- JS 渲染 -->
+    </div>
+  </div>
+
+  <!-- ==================== 模块6：知识库（可折叠）==================== -->
+  <div class="knowledge-base" id="knowledgeBase">
+    <div class="knowledge-header" onclick="toggleKnowledgeBase()">
+      <span>📚 知识库 — 关键术语与判断框架</span>
+      <span class="kb-toggle-icon">▼</span>
+    </div>
+    <div class="knowledge-content">
+      <!-- 核心术语 -->
+      <div class="kb-section">
+        <div class="kb-section-title">🔑 核心术语</div>
+        <div class="kb-terms-grid" id="kbTermsList">
+          <!-- JS 渲染 -->
+        </div>
+      </div>
+      <!-- 判断框架 -->
+      <div class="kb-section">
+        <div class="kb-section-title">🧭 多维判断框架</div>
+        <div class="kb-framework-grid" id="kbFrameworkList">
+          <!-- JS 渲染 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.dashboard-container -->
+
+<script src="assets/js/interpretations.js"></script>
+<script src="assets/js/dashboard.js"></script>
+</body>
+</html>
