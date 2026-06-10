@@ -86,14 +86,33 @@ jobs:
             exit 0
           fi
 
-          ICON="🚨"
-          [ "$ALERT_LEVEL" == "yellow" ] && ICON="⚠️"
+          if [ "$ALERT_LEVEL" == "red" ]; then
+            ICON="🚨"
+          else
+            ICON="⚠️"
+          fi
 
-          curl -s -X POST "$WEBHOOK_URL" \
+          # 用 Python 拼 JSON body，bash 不再处理转义嵌套
+          BODY=$(python3 - <<'PY'
+          import os, json
+          from datetime import datetime
+          content = (
+              f"{os.environ['ICON']} **生猪周期{os.environ['ALERT_LEVEL']}预警**\n"
+              f"> 触发时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+              f"> {os.environ['ALERT_MSG']}\n"
+              f"> \n"
+              f"> **查看看板：** https://brysonshi.github.io/pig-cycle-dashboard/\n"
+              f"> \n"
+              f"> _GitHub Actions 自动推送_"
+          )
+          print(json.dumps({"msgtype": "markdown", "markdown": {"content": content}}, ensure_ascii=False))
+          PY
+          )
+
+          echo "📤 推送 body:"
+          echo "$BODY"
+          RESP=$(curl -s -X POST "$WEBHOOK_URL" \
             -H 'Content-Type: application/json' \
-            -d "{
-              \"msgtype\": \"markdown\",
-              \"markdown\": {
-                \"content\": \"${ICON} **生猪周期${ALERT_LEVEL}预警**\\n> 触发时间: \$(date '+%Y-%m-%d %H:%M')\\n> ${ALERT_MSG}\\n> \\n> **查看看板：** https://brysonshi.github.io/pig-cycle-dashboard/\\n> \\n> _GitHub Actions 自动推送_\"
-              }
-            }"
+            -d "$BODY")
+          echo "📥 企微响应: $RESP"
+          echo "$RESP" | grep -q '"errcode":0' || { echo "❌ 企微返回非 0 错误"; exit 1; }
