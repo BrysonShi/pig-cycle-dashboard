@@ -1,110 +1,99 @@
-name: Daily Pig Cycle Update
+name: Deploy Pig Cycle Dashboard
 
 on:
-  # 每日北京时间09:00（UTC 01:00）自动触发
+  # 每日北京时间09:00（UTC 01:00）自动触发 — 部署
   schedule:
     - cron: '0 1 * * *'
   # 支持手动触发（GitHub Actions 页面可操作）
   workflow_dispatch:
-    inputs:
-      date_override:
-        description: '指定日期 (YYYY-MM-DD)，留空则用当天'
-        required: false
-        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  update-data:
-    name: Fetch & Update Pig Cycle Data
+  deploy:
+    name: Deploy to GitHub Pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          python-version: '3.11'
+          path: '.'
 
-      - name: Install dependencies
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  notify:
+    name: 企微预警推送
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: data-check
+
+      - name: 读取 latest.json + 判断预警等级
+        id: alert
         run: |
-          pip install requests aiohttp 2>/dev/null || true
+          # 读取 alert_level（若 latest.json 里有该字段）
+          LEVEL=$(python3 -c "
+          import json
+          try:
+              with open('data-check/data/latest.json','r',encoding='utf-8') as f:
+                  d = json.load(f)
+              level = d.get('alert_level', {}).get('level', 'green')
+              msg = d.get('alert_level', {}).get('message', '数据已更新')
+              print(f'{level}|{msg}')
+          except Exception as e:
+              print(f'green|读取失败: {e}')
+          ")
+          ALERT_LEVEL=$(echo "$LEVEL" | cut -d'|' -f1)
+          ALERT_MSG=$(echo "$LEVEL" | cut -d'|' -f2)
+          echo "alert_level=$ALERT_LEVEL" >> $GITHUB_OUTPUT
+          echo "alert_msg=$ALERT_MSG" >> $GITHUB_OUTPUT
+          echo "🚨 预警等级: $ALERT_LEVEL"
+          echo "📝 消息: $ALERT_MSG"
 
-      # -----------------------------------------------------------
-      # TODO（main session 接入 CodeAct 脚本后取消注释）:
-      # -----------------------------------------------------------
-      # - name: Run CodeAct data fetcher
-      #   id: fetcher
-      #   run: |
-      #     python scripts/fetch_pig_data.py --date ${{ env.DATA_DATE }} --output data/tracking/
-      #   env:
-      #     DATA_DATE: ${{ inputs.date_override || github.event.schedule == '' && '2026-06-10' || needs.scheduler.outputs.date }}
-
-      # - name: Merge latest report to latest.json
-      #   run: |
-      #     python scripts/merge_report.py \
-      #       --source data/tracking/report_$(date +%Y-%m-%d).json \
-      #       --dest data/latest.json
-
-      # -----------------------------------------------------------
-      # Placeholder: 模拟数据更新（当前开发阶段使用）
-      # 接入真实脚本后删除此步骤
-      # -----------------------------------------------------------
-      - name: Placeholder - Echo current status
-        run: |
-          echo "=========================================="
-          echo "📊 生猪行业数据看板 - 每日更新占位符"
-          echo "=========================================="
-          echo "触发时间: $(date -u '+%Y-%m-%d %H:%M UTC')"
-          echo "目标日期: ${{ inputs.date_override || '2026-06-10' }}"
-          echo ""
-          echo "当前状态: 待接入 CodeAct 抓取脚本"
-          echo "  - CodeAct 脚本完成后，在此调用 fetch_pig_data.py"
-          echo "  - 脚本输出 data/tracking/report_YYYY-MM-DD.json"
-          echo "  - 再调用 merge_report.py 生成 data/latest.json"
-          echo ""
-          echo "GitHub Pages 将自动部署更新后的内容。"
-          echo "=========================================="
-
-      # -----------------------------------------------------------
-      # 预警检查 + 企微推送
-      # -----------------------------------------------------------
-      - name: Check alert level and send WeCom notification
-        if: vars.WEWORK_WEBHOOK != ''
-        run: |
-          # 读取最新数据判断预警等级
-          # 注意：接入真实数据后，这里应读取 data/latest.json
-          # 当前用占位逻辑：
-          ALERT_LEVEL="yellow"  # TODO: 从 data/latest.json 读取 alert_level.level
-          WEBHOOK_URL="${{ vars.WEWORK_WEBHOOK }}"
-
-          echo "检测到预警等级: $ALERT_LEVEL"
-
-          if [ "$ALERT_LEVEL" == "red" ]; then
-            echo "🚨 发送红色预警到企微..."
-            curl -s -X POST "$WEBHOOK_URL" \
-              -H 'Content-Type: application/json' \
-              -d '{
-                "msgtype": "markdown",
-                "markdown": {
-                  "content": "🚨 **生猪周期红色预警**\n> 触发时间: '"$(date '+%Y-%m-%d %H:%M')"'\n> **请立即查看看板：** https://brysonshi.github.io/pig-cycle-dashboard/\n> \n> _此消息由 GitHub Actions 自动发送_"
-                }
-              }' || echo "Webhook 发送失败（可能 URL 无效或网络问题）"
-          else
-            echo "非红色预警，不发送企微通知"
-          fi
+      - name: 推送企微（红/黄色预警时）
+        if: steps.alert.outputs.alert_level == 'red' || steps.alert.outputs.alert_level == 'yellow'
         env:
-          WEWORK_WEBHOOK: ${{ vars.WEWORK_WEBHOOK }}
+          WEBHOOK_URL: ${{ secrets.WEWORK_WEBHOOK }}
+          ALERT_LEVEL: ${{ steps.alert.outputs.alert_level }}
+          ALERT_MSG: ${{ steps.alert.outputs.alert_msg }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "⚠️ WEWORK_WEBHOOK 未配置，跳过推送"
+            exit 0
+          fi
 
-      # -----------------------------------------------------------
-      # 提交更新（接入真实数据后启用）
-      # -----------------------------------------------------------
-      # - name: Commit and push updated data
-      #   if: steps.fetcher.outcome == 'success'
-      #   run: |
-      #     git config user.name "github-actions[bot]"
-      #     git config user.email "github-actions[bot]@users.noreply.github.com"
-      #     git add data/latest.json data/tracking/
-      #     git diff --cached --quiet || git commit -m "chore: auto-update pig cycle data $(date +%Y-%m-%d)"
-      #     git push
+          ICON="🚨"
+          [ "$ALERT_LEVEL" == "yellow" ] && ICON="⚠️"
+
+          curl -s -X POST "$WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"msgtype\": \"markdown\",
+              \"markdown\": {
+                \"content\": \"${ICON} **生猪周期${ALERT_LEVEL}预警**\\n> 触发时间: \$(date '+%Y-%m-%d %H:%M')\\n> ${ALERT_MSG}\\n> \\n> **查看看板：** https://brysonshi.github.io/pig-cycle-dashboard/\\n> \\n> _GitHub Actions 自动推送_\"
+              }
+            }"
