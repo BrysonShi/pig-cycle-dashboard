@@ -91,6 +91,7 @@ jobs:
           else
             ICON="⚠️"
           fi
+          export ICON  # 透传给下面的 python3 子进程
 
           # 用 Python 拼 JSON body，bash 不再处理转义嵌套
           BODY=$(python3 - <<'PY'
