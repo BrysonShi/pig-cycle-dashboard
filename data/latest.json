@@ -1,5 +1,5 @@
 {
-  "update_date": "2026-06-12",
+  "update_date": "2026-06-13",
   "update_time": "08:03 CST",
   "data_source": "codeact_script",
   "breeding_chain": {
@@ -32,7 +32,7 @@
         "threshold_high": 4200,
         "direction": "falling",
         "data_period": "2026年3月",
-        "data_source": "新浪财经",
+        "data_source": "财信证券研究",
         "confidence": 0.9,
         "extracted": true
       },
@@ -40,7 +40,7 @@
         "key": "piglet_price",
         "label": "仔猪价格",
         "unit": "元/kg",
-        "current": 23.95,
+        "current": 21.44,
         "mom_pct": null,
         "value_unit": "元/kg",
         "history": [
@@ -49,7 +49,7 @@
           null,
           null,
           null,
-          23.95
+          21.44
         ],
         "history_labels": [
           "12W前",
@@ -62,9 +62,9 @@
         "threshold_low": 35,
         "threshold_high": 55,
         "direction": "falling",
-        "data_period": "2026年6月10日",
+        "data_period": "2026年6月12日",
         "data_source": "现代畜牧网",
-        "confidence": 0.95,
+        "confidence": 0.85,
         "extracted": true
       },
       {
@@ -94,7 +94,7 @@
         "threshold_high": 12.0,
         "direction": "falling",
         "data_period": "2026年5月",
-        "data_source": "猪好多网",
+        "data_source": "卓创资讯",
         "confidence": 0.95,
         "extracted": true
       },
@@ -125,7 +125,7 @@
         "threshold_high": 55,
         "direction": "neutral",
         "data_period": null,
-        "data_source": null,
+        "data_source": "多个来源，包括中国饲料工业协会、豆丁网、头条等，但均未提供母猪料销量月度数据",
         "confidence": 0.0,
         "extracted": false
       }
@@ -138,7 +138,7 @@
         "key": "cold_storage_rate",
         "label": "冻品库容率",
         "unit": "%",
-        "current": 28.76,
+        "current": 30.87,
         "mom_pct": null,
         "value_unit": "%",
         "history": [
@@ -147,7 +147,7 @@
           null,
           null,
           null,
-          28.76
+          30.87
         ],
         "history_labels": [
           "12W前",
@@ -160,9 +160,9 @@
         "threshold_low": 25,
         "threshold_high": 65,
         "direction": "falling",
-        "data_period": "2026年第20周",
-        "data_source": "Mysteel",
-        "confidence": 0.95,
+        "data_period": "2026年第24周",
+        "data_source": "猪场兽医/头条",
+        "confidence": 0.8,
         "extracted": true
       },
       {
@@ -267,18 +267,18 @@
   "action_suggestions": [
     {
       "priority": 1,
-      "action": "加速淘汰低效母猪，降低存栏规模",
-      "rationale": "能繁母猪存栏3904万头仍偏高，去产能加速，需主动减栏以应对底部风险。"
+      "action": "加速淘汰低效母猪，降低产能",
+      "rationale": "能繁母猪存栏3904万头仍偏高，去产能加速，需主动缩减规模以应对底部风险。"
     },
     {
       "priority": 2,
-      "action": "暂停冻品入库，加快库存出清",
-      "rationale": "冻品需求走弱，冷库容率28.76%偏高，需减少库存积压，规避价格下跌风险。"
+      "action": "减少冻品库存，避免积压",
+      "rationale": "冻品库容率30.87%且需求走弱，应加快出库以降低仓储成本和价格下跌损失。"
     },
     {
       "priority": 3,
-      "action": "控制饲料采购节奏，降低原料成本",
-      "rationale": "猪粮比4.11处于亏损区间，饲料成本压力大，应减少高价原料采购，优化配方。"
+      "action": "暂停进口猪肉采购，控制成本",
+      "rationale": "进口量仅7万吨且国内供给过剩，进口无价格优势，需减少外采以缓解资金压力。"
     }
   ]
 }
