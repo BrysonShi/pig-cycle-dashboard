@@ -1,6 +1,6 @@
 {
-  "update_date": "2026-06-15",
-  "update_time": "08:04 CST",
+  "update_date": "2026-06-16",
+  "update_time": "08:02 CST",
   "data_source": "codeact_script",
   "breeding_chain": {
     "label": "养殖链",
@@ -125,7 +125,7 @@
         "threshold_high": 55,
         "direction": "neutral",
         "data_period": "2026年4月",
-        "data_source": "农业农村部畜牧兽医局 中国饲料工业协会",
+        "data_source": "中国饲料工业协会",
         "confidence": 0.0,
         "extracted": false
       }
@@ -160,7 +160,7 @@
         "threshold_low": 25,
         "threshold_high": 65,
         "direction": "falling",
-        "data_period": "2026年第24周（截至6月12日）",
+        "data_period": "2026年第24周",
         "data_source": "国元期货研究",
         "confidence": 0.95,
         "extracted": true
@@ -192,7 +192,7 @@
         "threshold_high": 9.0,
         "direction": "falling",
         "data_period": "2026年第21周",
-        "data_source": "发改委",
+        "data_source": "发改委价格监测中心",
         "confidence": 0.9,
         "extracted": true
       },
@@ -267,18 +267,18 @@
   "action_suggestions": [
     {
       "priority": 1,
-      "action": "加速淘汰低效母猪，降低产能",
-      "rationale": "能繁母猪存栏3904万头仍偏高，且去产能加速，需主动淘汰低效母猪以应对底部区间压力。"
+      "action": "加速淘汰低效能母猪，优化种群结构",
+      "rationale": "能繁母猪存栏3904万头仍偏高，且去产能加速，应主动淘汰低产母猪以降低后续成本压力。"
     },
     {
       "priority": 2,
-      "action": "减少冻品库存，规避价格下跌风险",
-      "rationale": "冻品库存率32.35%处于高位，需求走弱，需加快出库以降低亏损风险。"
+      "action": "暂停冻品入库，加快库存出清",
+      "rationale": "冻品库容率32.35%处于高位，需求走弱，需优先消化库存以避免跌价损失。"
     },
     {
       "priority": 3,
-      "action": "暂停进口猪肉采购，控制成本",
-      "rationale": "进口量7万吨处于低位，国内猪价低迷且需求疲软，减少进口可避免额外成本。"
+      "action": "减少仔猪外购，控制育肥规模",
+      "rationale": "仔猪价格20.03元/公斤处于低位，但预警红色显示风险高，应收缩规模以规避深度亏损。"
     }
   ]
 }
