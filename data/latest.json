@@ -1,6 +1,6 @@
 {
-  "update_date": "2026-06-16",
-  "update_time": "08:02 CST",
+  "update_date": "2026-06-17",
+  "update_time": "08:05 CST",
   "data_source": "codeact_script",
   "breeding_chain": {
     "label": "养殖链",
@@ -32,7 +32,7 @@
         "threshold_high": 4200,
         "direction": "falling",
         "data_period": "2026年3月",
-        "data_source": "新浪财经",
+        "data_source": "农业农村部",
         "confidence": 0.9,
         "extracted": true
       },
@@ -40,7 +40,7 @@
         "key": "piglet_price",
         "label": "仔猪价格",
         "unit": "元/kg",
-        "current": 20.03,
+        "current": 18.47,
         "mom_pct": null,
         "value_unit": "元/kg",
         "history": [
@@ -49,7 +49,7 @@
           null,
           null,
           null,
-          20.03
+          18.47
         ],
         "history_labels": [
           "12W前",
@@ -62,7 +62,7 @@
         "threshold_low": 35,
         "threshold_high": 55,
         "direction": "falling",
-        "data_period": "2026-06-11",
+        "data_period": "2026年6月16日",
         "data_source": "博亚和讯",
         "confidence": 0.95,
         "extracted": true
@@ -93,7 +93,7 @@
         "threshold_low": 7.0,
         "threshold_high": 12.0,
         "direction": "falling",
-        "data_period": "2026年5月",
+        "data_period": "2026年5月29日",
         "data_source": "卓创资讯",
         "confidence": 0.95,
         "extracted": true
@@ -125,7 +125,7 @@
         "threshold_high": 55,
         "direction": "neutral",
         "data_period": "2026年4月",
-        "data_source": "中国饲料工业协会",
+        "data_source": "农业农村部畜牧兽医局 中国饲料工业协会",
         "confidence": 0.0,
         "extracted": false
       }
@@ -160,8 +160,8 @@
         "threshold_low": 25,
         "threshold_high": 65,
         "direction": "falling",
-        "data_period": "2026年第24周",
-        "data_source": "国元期货研究",
+        "data_period": "2026年第24周（截至6月12日）",
+        "data_source": "现代畜牧网",
         "confidence": 0.95,
         "extracted": true
       },
@@ -169,7 +169,7 @@
         "key": "pig_grain_ratio",
         "label": "猪粮比",
         "unit": "比",
-        "current": 4.1,
+        "current": 4.01,
         "mom_pct": null,
         "value_unit": "",
         "history": [
@@ -178,7 +178,7 @@
           null,
           null,
           null,
-          4.1
+          4.01
         ],
         "history_labels": [
           "12W前",
@@ -191,8 +191,8 @@
         "threshold_low": 5.5,
         "threshold_high": 9.0,
         "direction": "falling",
-        "data_period": "2026年第21周",
-        "data_source": "发改委价格监测中心",
+        "data_period": "2026年第24周",
+        "data_source": "国家发改委价格监测中心",
         "confidence": 0.9,
         "extracted": true
       },
@@ -200,7 +200,7 @@
         "key": "import_volume",
         "label": "进口量",
         "unit": "万吨/月",
-        "current": 7.0,
+        "current": 6.0,
         "mom_pct": null,
         "value_unit": "万吨",
         "history": [
@@ -209,7 +209,7 @@
           null,
           null,
           null,
-          7.0
+          6.0
         ],
         "history_labels": [
           "12W前",
@@ -222,8 +222,8 @@
         "threshold_low": 8,
         "threshold_high": 22,
         "direction": "falling",
-        "data_period": "2026年1月",
-        "data_source": "海关总署",
+        "data_period": "2026年3月",
+        "data_source": "https://cj.sina.cn/articles/view/7857141524/1d4527714019038m2y",
         "confidence": 0.9,
         "extracted": true
       }
@@ -248,11 +248,11 @@
   "alert_level": {
     "level": "red",
     "level_label": "红色预警",
-    "summary": "关注指标: 猪粮比=4.1, 淘汰母猪价格=7.74",
+    "summary": "关注指标: 猪粮比=4.01, 淘汰母猪价格=7.74",
     "triggers": [
       {
         "indicator": "猪粮比",
-        "value": 4.1,
+        "value": 4.01,
         "threshold": 5.5,
         "severity": "warn"
       },
@@ -268,17 +268,17 @@
     {
       "priority": 1,
       "action": "加速淘汰低效能母猪，优化种群结构",
-      "rationale": "能繁母猪存栏3904万头仍偏高，且去产能加速，应主动淘汰低产母猪以降低后续成本压力。"
+      "rationale": "能繁母猪存栏3904万头仍偏高，且去产能加速，应优先淘汰低产母猪以降低后续成本压力。"
     },
     {
       "priority": 2,
-      "action": "暂停冻品入库，加快库存出清",
-      "rationale": "冻品库容率32.35%处于高位，需求走弱，需优先消化库存以避免跌价损失。"
+      "action": "减少冻品库存，规避价格下跌风险",
+      "rationale": "冻品需求走弱且库存率32.35%处于高位，需加快出库以减轻资金占用和跌价损失。"
     },
     {
       "priority": 3,
-      "action": "减少仔猪外购，控制育肥规模",
-      "rationale": "仔猪价格20.03元/公斤处于低位，但预警红色显示风险高，应收缩规模以规避深度亏损。"
+      "action": "暂停或缩减进口采购计划",
+      "rationale": "进口量仅6万吨，国内供给过剩叠加需求疲软，进口性价比降低，应避免增加供应压力。"
     }
   ]
 }
