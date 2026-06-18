@@ -1,6 +1,6 @@
 {
-  "update_date": "2026-06-17",
-  "update_time": "08:05 CST",
+  "update_date": "2026-06-18",
+  "update_time": "08:06 CST",
   "data_source": "codeact_script",
   "breeding_chain": {
     "label": "养殖链",
@@ -9,7 +9,7 @@
         "key": "sow_inventory",
         "label": "能繁母猪存栏",
         "unit": "万头",
-        "current": 3904.0,
+        "current": 3906.0,
         "mom_pct": null,
         "value_unit": "万头",
         "history": [
@@ -18,7 +18,7 @@
           null,
           null,
           null,
-          3904.0
+          3906.0
         ],
         "history_labels": [
           "12W前",
@@ -32,7 +32,7 @@
         "threshold_high": 4200,
         "direction": "falling",
         "data_period": "2026年3月",
-        "data_source": "农业农村部",
+        "data_source": "信达期货周报引用官方数据",
         "confidence": 0.9,
         "extracted": true
       },
@@ -124,8 +124,8 @@
         "threshold_low": 42,
         "threshold_high": 55,
         "direction": "neutral",
-        "data_period": "2026年4月",
-        "data_source": "农业农村部畜牧兽医局 中国饲料工业协会",
+        "data_period": null,
+        "data_source": "多个来源",
         "confidence": 0.0,
         "extracted": false
       }
@@ -192,7 +192,7 @@
         "threshold_high": 9.0,
         "direction": "falling",
         "data_period": "2026年第24周",
-        "data_source": "国家发改委价格监测中心",
+        "data_source": "发改委价格监测中心",
         "confidence": 0.9,
         "extracted": true
       },
@@ -268,17 +268,17 @@
     {
       "priority": 1,
       "action": "加速淘汰低效能母猪，优化种群结构",
-      "rationale": "能繁母猪存栏3904万头仍偏高，且去产能加速，应优先淘汰低产母猪以降低后续成本压力。"
+      "rationale": "能繁母猪存栏3906万头仍偏高，且去产能加速，应主动淘汰低产母猪以降低后续成本压力。"
     },
     {
       "priority": 2,
       "action": "减少冻品库存，规避价格下跌风险",
-      "rationale": "冻品需求走弱且库存率32.35%处于高位，需加快出库以减轻资金占用和跌价损失。"
+      "rationale": "冻品需求走弱且库容率32.35%处于高位，需加快出库以防范价格进一步下跌。"
     },
     {
       "priority": 3,
-      "action": "暂停或缩减进口采购计划",
-      "rationale": "进口量仅6万吨，国内供给过剩叠加需求疲软，进口性价比降低，应避免增加供应压力。"
+      "action": "暂停进口猪肉采购，控制资金占用",
+      "rationale": "进口量仅6万吨且国内供应过剩，进口无价格优势，应暂停采购以降低库存和资金风险。"
     }
   ]
 }

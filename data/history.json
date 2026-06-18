@@ -152,5 +152,16 @@
     "piglet_price": 18.47,
     "cull_sow_price": 7.74,
     "cold_storage_rate": 32.35
+  },
+  {
+    "date": "2026-06-18",
+    "update_time": "08:06",
+    "sow_inventory": 3906.0,
+    "pig_grain_ratio": 4.01,
+    "import_volume": 6.0,
+    "sow_feed_sales": null,
+    "piglet_price": 18.47,
+    "cull_sow_price": 7.74,
+    "cold_storage_rate": 32.35
   }
 ]
